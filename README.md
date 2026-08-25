@@ -38,18 +38,11 @@ chmod +x install-pbctl.sh
 export PATH="$HOME/.pbctl/current:$PATH"
 ```
 
-Then start it:
+Then start with:
 
 ```bash
 pbctl
 ```
-
-## Commands
-
-No commands yet. The command surface will target the Management API and the Player API described
-in [docs/pillarbox-api.md](docs/pillarbox-api.md), and will be documented in
-`docs/design/commands.md` as commands land.
-
 ## Contributing
 
 See the [contributing guide](docs/CONTRIBUTING.md). Participation is governed by the

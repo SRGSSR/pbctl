@@ -65,7 +65,7 @@
   },
   "dependencies": {
     "ink": "^7.1.1",
-    "inkstand": "^0.2.0",
+    "inkstand": "^1.0.0",
     "react": "^19.2.8"
   }
 }

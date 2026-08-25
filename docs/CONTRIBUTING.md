@@ -50,8 +50,9 @@ Write the subject line for the changelog reader, not the diff reader.
 
 ## Changing behavior
 
-[docs/pillarbox-api.md](./pillarbox-api.md) describes the API surface commands will target: the
-protected Management API and the public Player API. When the first commands land, document them
+The [pillarbox-demo-backend](https://github.com/SRGSSR/pillarbox-demo-backend) documentation
+describes the API surface commands target: the protected Management API and the public Player
+API. When the first commands land, document them
 in `docs/design/commands.md` in the same change as the code. Documentation reflects current
 behavior, never planned behavior. The design choices:
 
