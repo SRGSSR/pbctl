@@ -1,20 +1,30 @@
 // The explorer state: the folder tree, the media of the highlighted folder.
 
-import { Tree, type TreeRow } from 'inkstand';
+import type { Tree, TreeRow } from 'inkstand';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type Connection,
   type Folder,
   failureMessage,
   listFolderMedia,
-  listFolders,
   listMedia,
   type Media,
 } from '../../engine/engine';
-import { BIN_ID, folderNodes, isAdmin, UNASSIGNED_ID } from './model';
+import { useAccess, useFolders, useTree } from './folder-state';
+import { BIN_ID, canWrite, isAdmin, UNASSIGNED_ID } from './model';
 
 /** What the explorer reports to the shell. */
 export type Report = (message: string, tone: 'error' | 'info') => void;
+
+/** The media marked for a move. */
+interface Mark {
+  /** The media id. */
+  id: string;
+  /** The media title, for the messages. */
+  title: string;
+  /** The folder marked in; undefined outside a real folder. */
+  folderId: string | undefined;
+}
 
 /** The explorer state and its actions. */
 export interface ExplorerState {
@@ -36,6 +46,8 @@ export interface ExplorerState {
   loadingMedia: boolean;
   /** The search query; empty when none. */
   query: string;
+  /** The media marked for a move; undefined when none is. */
+  mark: Mark | undefined;
   /** Moves the tree highlight. */
   setHighlight: (index: number) => void;
   /** Expands a folder. */
@@ -46,6 +58,8 @@ export interface ExplorerState {
   setMediaHighlight: (index: number) => void;
   /** Sets the search query. */
   setQuery: (query: string) => void;
+  /** Marks a media for a move, or clears the mark. */
+  setMark: (mark: Mark | undefined) => void;
   /** Reloads the folders and the media. */
   reload: () => void;
   /** Reloads the media, keeping the highlight. */
@@ -53,8 +67,8 @@ export interface ExplorerState {
 }
 
 /**
- * Loads the folders on connect, and the media whenever the highlighted
- * folder or the query changes.
+ * Loads the folders on connect, their grants after them, and the media
+ * whenever the highlighted folder or the query changes.
  *
  * @param connection - The live connection.
  * @param report - Reports failures to the shell.
@@ -64,20 +78,28 @@ export function useExplorer(
   connection: Connection,
   report: Report,
 ): ExplorerState {
-  const folders = useFolders(connection, isAdmin(connection.identity), report);
+  const { identity } = connection;
+  const fail = useFailure(report, 'Folders failed to load');
+  const folders = useFolders(connection, fail);
+  const access = useAccess(connection, folders.folders, canWrite(identity));
+  const tree = useTree(folders.folders, isAdmin(identity), access);
   const [query, setQuery] = useState('');
-  const folder = folders.tree.rows[folders.highlight];
+  const [mark, setMark] = useState<Mark | undefined>();
+  const folder = tree.tree.rows[tree.highlight];
   const media = useMedia(connection, folder?.id, query, report);
   const reload = (): void => {
-    folders.reload();
+    folders.reloadFolders();
     media.reloadMedia();
   };
   return {
     ...folders,
+    ...tree,
     ...media,
     folder,
     query,
     setQuery,
+    mark,
+    setMark,
     reload,
   };
 }
@@ -97,79 +119,6 @@ function useFailure(report: Report, prefix: string): (error: unknown) => void {
       latest.current(`${prefix}: ${failureMessage(error)}`, 'error'),
     [prefix],
   );
-}
-
-/** The folder half of the state. */
-interface FolderState {
-  tree: Tree;
-  folders: Folder[];
-  highlight: number;
-  loadingFolders: boolean;
-  setHighlight: (index: number) => void;
-  expand: (id: string) => void;
-  collapse: (id: string) => void;
-  reload: () => void;
-}
-
-/**
- * Loads the folders and holds the tree.
- *
- * @param connection - The live connection.
- * @param admin - Whether the tree shows the bin.
- * @param report - Reports failures to the shell.
- * @returns The folder state.
- */
-function useFolders(
-  connection: Connection,
-  admin: boolean,
-  report: Report,
-): FolderState {
-  const [tree, setTree] = useState(() => Tree.create([]));
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [loadingFolders, setLoading] = useState(true);
-  const fail = useFailure(report, 'Folders failed to load');
-  const reload = useCallback(() => {
-    setLoading(true);
-    listFolders(connection)
-      .then((loaded) => {
-        setFolders(loaded);
-        setTree((current) => current.withNodes(folderNodes(loaded, admin)));
-      }, fail)
-      .finally(() => setLoading(false));
-  }, [connection, admin, fail]);
-  useEffect(reload, [reload]);
-  const { highlight, setHighlight } = useHighlight(tree);
-  return {
-    tree,
-    folders,
-    highlight,
-    loadingFolders,
-    setHighlight,
-    expand: (id) => setTree(tree.expand(id)),
-    collapse: (id) => setTree(tree.collapse(id)),
-    reload,
-  };
-}
-
-/**
- * Holds the tree highlight by folder id, so a reload that reorders or
- * removes rows keeps it on the same folder, or falls back to the root.
- *
- * @param tree - The folder tree.
- * @returns The highlighted row index and its setter.
- */
-function useHighlight(tree: Tree): {
-  highlight: number;
-  setHighlight: (index: number) => void;
-} {
-  const [highlightId, setHighlightId] = useState(UNASSIGNED_ID);
-  const highlight = Math.max(
-    tree.rows.findIndex((row) => row.id === highlightId),
-    0,
-  );
-  const setHighlight = (index: number): void =>
-    setHighlightId(tree.rows[index]?.id ?? UNASSIGNED_ID);
-  return { highlight, setHighlight };
 }
 
 /** The media half of the state. */

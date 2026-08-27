@@ -18,7 +18,7 @@ export interface ProfileAnswers {
   tlsVerify: boolean;
 }
 
-type Step = 'name' | 'backend' | 'issuer' | 'clientId' | 'scopes' | 'tls';
+type Step = 'name' | 'backend' | 'tls' | 'issuer' | 'clientId' | 'scopes';
 
 /** One wizard question: how to render it, how to apply it, where to go next. */
 export interface Question {
@@ -53,7 +53,17 @@ const QUESTIONS: Record<Step, Question> = {
     kind: 'text',
     label: 'Backend URL',
     fallback: 'http://localhost:8080',
+    next: 'tls',
+  },
+  tls: {
+    kind: 'select',
+    label: 'Verify TLS certificates?',
+    items: [
+      { label: 'yes', value: true },
+      { label: 'no', value: false },
+    ],
     next: 'issuer',
+    apply: (answers, value) => ({ ...answers, tlsVerify: value === true }),
   },
   issuer: {
     kind: 'text',
@@ -71,16 +81,6 @@ const QUESTIONS: Record<Step, Question> = {
     kind: 'text',
     label: 'Scopes',
     fallback: DEFAULT_SCOPES.join(' '),
-    next: 'tls',
-  },
-  tls: {
-    kind: 'select',
-    label: 'Verify TLS certificates?',
-    items: [
-      { label: 'yes', value: true },
-      { label: 'no', value: false },
-    ],
-    apply: (answers, value) => ({ ...answers, tlsVerify: value === true }),
   },
 };
 

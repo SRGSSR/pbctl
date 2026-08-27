@@ -12,6 +12,7 @@ import {
   pollForToken,
   probeBackend,
   requestDeviceCode,
+  setTlsVerification,
 } from '../../engine/engine';
 import { openBrowser } from '../../utils/browser';
 import { DeviceLoginScreen, type LoginOutcome } from '../screens/device-login';
@@ -28,6 +29,8 @@ interface PendingLogin {
 
 /**
  * Logs in to a profile with the device flow and makes it the live connection.
+ * The profile's TLS setting applies from here on, to the identity provider
+ * and to the backend.
  *
  * @param profile - The profile to log in to.
  * @param context - What the flow can act on.
@@ -37,11 +40,7 @@ export async function login(
   profile: Profile,
   context: ShellContext,
 ): Promise<boolean> {
-  pushLine(
-    context,
-    `Logging in to "${profile.name}" (${profile.backend})…`,
-    'dim',
-  );
+  announce(profile, context);
   const pending = await startLogin(profile, context);
   if (pending === undefined) {
     return false;
@@ -63,6 +62,29 @@ export async function login(
   await report(connection, context);
   context.session.setConnection(connection);
   return true;
+}
+
+/**
+ * Applies the profile's TLS setting and states what the login is about to do.
+ *
+ * @param profile - The profile to log in to.
+ * @param context - Where the lines go.
+ * @returns Nothing.
+ */
+function announce(profile: Profile, context: ShellContext): void {
+  setTlsVerification(profile.tlsVerify);
+  pushLine(
+    context,
+    `Logging in to "${profile.name}" (${profile.backend})…`,
+    'dim',
+  );
+  if (!profile.tlsVerify) {
+    pushLine(
+      context,
+      '⚠ TLS certificate verification is off for this profile.',
+      'yellow',
+    );
+  }
 }
 
 /**

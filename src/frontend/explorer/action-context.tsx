@@ -27,8 +27,6 @@ export interface ActionContext {
   report: Report;
   /** The diff lines a confirmation may show. */
   diffRows: number;
-  /** Opens the profile screen. */
-  onProfiles: () => void;
   /** Quits the application. */
   onQuit: () => void;
 }

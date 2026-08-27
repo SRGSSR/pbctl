@@ -1,4 +1,4 @@
-// The profile screen: the saved profiles, with login, create, default, delete.
+// The profile screen: the saved profiles, with login, create, delete.
 
 import { Box, type Key, Text, useInput } from 'ink';
 import { KeyBar, Select } from 'inkstand';
@@ -16,11 +16,14 @@ import { toProfile } from './profile-add-machine';
 /** The screen contract. */
 export interface ProfilesScreenProps {
   /** Looks up the identity provider of a backend, for the wizard. */
-  detect: (backend: string) => Promise<IdentityProviderHint | undefined>;
+  detect: (
+    backend: string,
+    tlsVerify: boolean,
+  ) => Promise<IdentityProviderHint | undefined>;
   /** Called with the profile to log in to. */
   onLogin: (profile: Profile) => void;
-  /** Called when the user closes the screen. */
-  onCancel: () => void;
+  /** Called when the user quits from the screen. */
+  onQuit: () => void;
 }
 
 /** What the screen shows. */
@@ -49,7 +52,9 @@ interface ListState {
 const NAME_WIDTH = 16;
 
 /**
- * Renders the profile screen. It starts on the wizard when no profile exists.
+ * Renders the profile screen: the screen pbctl opens at startup, where a
+ * profile is picked, created, or deleted. It starts on the wizard when no
+ * profile exists.
  *
  * @param props - The component props.
  * @returns The screen element.
@@ -63,11 +68,7 @@ export function ProfilesScreen(props: ProfilesScreenProps): ReactElement {
     return <DeleteConfirm profile={phase.profile} state={state} />;
   }
   return (
-    <ProfileList
-      onCancel={props.onCancel}
-      onLogin={props.onLogin}
-      state={state}
-    />
+    <ProfileList onLogin={props.onLogin} onQuit={props.onQuit} state={state} />
   );
 }
 
@@ -91,8 +92,8 @@ function useProfileState(): { state: ListState; phase: Phase } {
 }
 
 /**
- * Renders the wizard phase. Cancelling returns to the list, or closes the
- * screen when no profile exists yet.
+ * Renders the wizard phase. Cancelling returns to the list, or quits when no
+ * profile exists yet.
  *
  * @param props - The component props.
  * @param props.screen - The screen props.
@@ -109,7 +110,7 @@ function Wizard(props: {
     <ProfileAddWizard
       detect={screen.detect}
       onCancel={() =>
-        empty ? screen.onCancel() : state.setPhase({ kind: 'list' })
+        empty ? screen.onQuit() : state.setPhase({ kind: 'list' })
       }
       onSubmit={(answers) =>
         screen.onLogin(save(state.store, toProfile(answers)))
@@ -119,18 +120,14 @@ function Wizard(props: {
 }
 
 /**
- * Saves a profile; the first one saved becomes the default.
+ * Saves a profile.
  *
  * @param store - The store.
  * @param profile - The profile.
  * @returns The profile.
  */
 function save(store: ProfileStore, profile: Profile): Profile {
-  const first = store.load().profiles.length === 0;
   store.upsert(profile);
-  if (first) {
-    store.setDefault(profile.name);
-  }
   return profile;
 }
 
@@ -140,16 +137,16 @@ function save(store: ProfileStore, profile: Profile): Profile {
  * @param props - The component props.
  * @param props.state - The list state.
  * @param props.onLogin - Called with the profile to log in to.
- * @param props.onCancel - Called when the user closes the screen.
+ * @param props.onQuit - Called when the user quits from the screen.
  * @returns The list element.
  */
 function ProfileList(props: {
   state: ListState;
   onLogin: (profile: Profile) => void;
-  onCancel: () => void;
+  onQuit: () => void;
 }): ReactElement {
   const { state } = props;
-  const { profiles, defaultProfile } = state.config;
+  const { profiles } = state.config;
   useInput((input, key) => listKey(input, key, props));
   return (
     <Box
@@ -159,7 +156,7 @@ function ProfileList(props: {
       paddingX={1}
     >
       <Text bold color="cyan">
-        Profiles (esc closes)
+        Profiles
       </Text>
       {profiles.length === 0 ? (
         <Text dimColor>No profiles. Press n to create one.</Text>
@@ -167,7 +164,6 @@ function ProfileList(props: {
         profiles.map((profile, index) => (
           <Row
             highlighted={index === state.highlight}
-            isDefault={profile.name === defaultProfile}
             key={profile.name}
             profile={profile}
           />
@@ -177,8 +173,8 @@ function ProfileList(props: {
         actions={[
           { key: '↵', label: 'log in', disabled: profiles.length === 0 },
           { key: 'n', label: 'new' },
-          { key: 'd', label: 'default', disabled: profiles.length === 0 },
           { key: 'x', label: 'delete', disabled: profiles.length === 0 },
+          { key: 'q', label: 'quit' },
         ]}
       />
     </Box>
@@ -191,14 +187,9 @@ function ProfileList(props: {
  * @param props - The component props.
  * @param props.profile - The profile.
  * @param props.highlighted - Whether the row is highlighted.
- * @param props.isDefault - Whether the profile is the default.
  * @returns The row element.
  */
-function Row(props: {
-  profile: Profile;
-  highlighted: boolean;
-  isDefault: boolean;
-}): ReactElement {
+function Row(props: { profile: Profile; highlighted: boolean }): ReactElement {
   return (
     <Text
       bold={props.highlighted}
@@ -207,7 +198,6 @@ function Row(props: {
     >
       {props.highlighted ? '❯ ' : '  '}
       {props.profile.name.padEnd(NAME_WIDTH)} {props.profile.backend}
-      {props.isDefault ? '  (default)' : ''}
     </Text>
   );
 }
@@ -220,7 +210,7 @@ function Row(props: {
  * @param props - The list props.
  * @param props.state - The list state.
  * @param props.onLogin - Called with the profile to log in to.
- * @param props.onCancel - Called when the user closes the screen.
+ * @param props.onQuit - Called when the user quits from the screen.
  * @returns Nothing.
  */
 function listKey(
@@ -229,12 +219,12 @@ function listKey(
   props: {
     state: ListState;
     onLogin: (profile: Profile) => void;
-    onCancel: () => void;
+    onQuit: () => void;
   },
 ): void {
   const { state } = props;
-  if (isCancel(input, key)) {
-    props.onCancel();
+  if (isQuit(input, key)) {
+    props.onQuit();
     return;
   }
   if (input === 'n') {
@@ -252,13 +242,13 @@ function listKey(
 }
 
 /**
- * Reports whether a keystroke closes the screen.
+ * Reports whether a keystroke quits the application.
  *
  * @param input - The typed character.
  * @param key - The special-key flags.
  * @returns Whether the keystroke is escape, `q`, or ctrl+c.
  */
-function isCancel(input: string, key: Key): boolean {
+function isQuit(input: string, key: Key): boolean {
   return key.escape || input === 'q' || (key.ctrl && input === 'c');
 }
 
@@ -281,9 +271,6 @@ function profileKey(
 ): void {
   if (key.return) {
     props.onLogin(profile);
-  } else if (input === 'd') {
-    props.state.store.setDefault(profile.name);
-    props.state.refresh();
   } else if (input === 'x') {
     props.state.setPhase({ kind: 'delete', profile });
   }

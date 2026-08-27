@@ -22,8 +22,6 @@ export interface Profile {
 
 /** The content of the configuration file (`~/.config/pbctl/config.json`). */
 export interface Config {
-  /** The name of the profile pbctl connects to at startup. */
-  defaultProfile?: string;
   /** The saved profiles. */
   profiles: Profile[];
 }
@@ -97,41 +95,22 @@ export class ProfileStore {
   }
 
   /**
-   * Resolves the profile pbctl connects to at startup.
-   *
-   * @returns The profile named by `defaultProfile`, otherwise the first
-   * profile, otherwise undefined.
-   */
-  defaultProfile(): Profile | undefined {
-    const config = this.load();
-    const named = config.profiles.find(
-      (profile) => profile.name === config.defaultProfile,
-    );
-    return named ?? config.profiles[0];
-  }
-
-  /**
-   * Adds or replaces a profile by name. The default profile is unchanged.
+   * Adds or replaces a profile by name.
    *
    * @param profile - The profile to save.
    * @returns The updated configuration.
    */
   upsert(profile: Profile): Config {
-    const config = this.load();
-    const others = config.profiles.filter(
+    const others = this.load().profiles.filter(
       (existing) => existing.name !== profile.name,
     );
-    const updated: Config = {
-      ...config,
-      profiles: [...others, profile],
-    };
+    const updated: Config = { profiles: [...others, profile] };
     this.save(updated);
     return updated;
   }
 
   /**
-   * Deletes the named profile. The default marker is cleared when it pointed
-   * at the deleted profile.
+   * Deletes the named profile.
    *
    * @param name - The profile name.
    * @returns Whether a profile was deleted.
@@ -144,30 +123,8 @@ export class ProfileStore {
     if (remaining.length === config.profiles.length) {
       return false;
     }
-    this.save({
-      defaultProfile:
-        config.defaultProfile === name ? undefined : config.defaultProfile,
-      profiles: remaining,
-    });
+    this.save({ profiles: remaining });
     return true;
-  }
-
-  /**
-   * Makes the named profile the default.
-   *
-   * @param name - The profile name.
-   * @returns The profile, or undefined when no profile has the name.
-   */
-  setDefault(name: string): Profile | undefined {
-    const config = this.load();
-    const profile = config.profiles.find(
-      (candidate) => candidate.name === name,
-    );
-    if (profile === undefined) {
-      return undefined;
-    }
-    this.save({ ...config, defaultProfile: name });
-    return profile;
   }
 }
 

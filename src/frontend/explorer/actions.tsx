@@ -7,6 +7,7 @@ import {
   failureMessage,
   renameFolder,
 } from '../../engine/engine';
+import { HelpScreen } from '../screens/help';
 import {
   type ActionContext,
   askText,
@@ -17,6 +18,8 @@ import {
 import {
   deleteMediaFlow,
   editMedia,
+  markMedia,
+  moveMarked,
   newMedia,
   restore,
   unassign,
@@ -38,8 +41,8 @@ export function actionsOf(pane: Pane, state: ExplorerState): KeyAction[] {
     { key: '/', label: 'search' },
     { key: 'c', label: 'clear', disabled: state.query === '' },
     { key: 'r', label: 'reload' },
-    { key: 'p', label: 'profiles' },
     { key: 'q', label: 'quit' },
+    { key: '?', label: 'keys' },
   ];
   const own = pane === 'tree' ? treeActions(state) : listActions(state);
   return [...own, ...common];
@@ -59,6 +62,11 @@ function treeActions(state: ExplorerState): KeyAction[] {
     { key: 'm', label: 'new media' },
     { key: 'e', label: 'rename', disabled: !real },
     { key: 'd', label: 'delete', disabled: !real },
+    {
+      key: 'P',
+      label: 'move here',
+      disabled: !real || state.mark === undefined,
+    },
   ];
 }
 
@@ -69,15 +77,18 @@ function treeActions(state: ExplorerState): KeyAction[] {
  * @returns The actions.
  */
 function listActions(state: ExplorerState): KeyAction[] {
-  const media = state.media[state.mediaHighlight] !== undefined;
+  const highlighted = state.media[state.mediaHighlight];
+  const media = highlighted !== undefined;
   const folder = state.folder?.id;
   if (folder === BIN_ID) {
     return [{ key: 'u', label: 'restore', disabled: !media }];
   }
   const real = folder !== undefined && !VIRTUAL_IDS.includes(folder);
+  const marked = state.mark?.id === highlighted?.id;
   return [
     { key: '↵', label: 'edit', disabled: !media },
     { key: 'm', label: 'new media' },
+    { key: 'v', label: marked ? 'unmark' : 'mark', disabled: !media },
     { key: 'x', label: 'unassign', disabled: !media || !real },
     { key: 'd', label: 'delete', disabled: !media },
   ];
@@ -116,14 +127,16 @@ function flowOf(
     n: () => newFolder(context),
     m: () => newMedia(context),
     e: async () => (tree ? renameFolderFlow(context) : undefined),
+    v: async () => (tree ? undefined : markMedia(context)),
+    P: async () => (tree ? moveMarked(context) : undefined),
     x: () => unassign(context),
     u: () => restore(context),
     d: () => (tree ? deleteFolderFlow(context) : deleteMediaFlow(context)),
     '/': () => search(context),
     c: async () => context.state.setQuery(''),
     r: async () => reload(context),
-    p: async () => context.onProfiles(),
     q: async () => context.onQuit(),
+    '?': () => help(context),
   };
   return flows[key];
 }
@@ -140,6 +153,18 @@ function reload(context: ActionContext): void {
 }
 
 /**
+ * Shows every key in place of the media pane.
+ *
+ * @param context - What the action acts on.
+ * @returns Nothing.
+ */
+async function help(context: ActionContext): Promise<void> {
+  await context.open<boolean>((done) => (
+    <HelpScreen onClose={() => done(true)} />
+  ));
+}
+
+/**
  * Creates a folder under the highlighted one.
  *
  * @param context - What the action acts on.
@@ -148,9 +173,11 @@ function reload(context: ActionContext): void {
 async function newFolder(context: ActionContext): Promise<void> {
   const parent = context.state.folder;
   const under =
-    parent === undefined || parent.id === UNASSIGNED_ID ? undefined : parent;
+    parent === undefined || VIRTUAL_IDS.includes(parent.id)
+      ? undefined
+      : context.state.folders.find((folder) => folder.id === parent.id);
   const title =
-    under === undefined ? 'New root folder' : `New folder in ${under.label}`;
+    under === undefined ? 'New root folder' : `New folder in ${under.name}`;
   const name = await askText(context, title, 'Name');
   if (name === undefined || name === '') {
     return;

@@ -1,7 +1,12 @@
 // Pure helpers of the explorer: tree nodes and row texts.
 
 import type { TreeNode } from 'inkstand';
-import type { Folder, Identity, Media } from '../../engine/engine';
+import type {
+  Folder,
+  FolderAccess,
+  Identity,
+  Media,
+} from '../../engine/engine';
 
 /** The id of the virtual folder listing the media assigned to no folder. */
 export const UNASSIGNED_ID = 'pbctl:unassigned';
@@ -23,14 +28,52 @@ export function isAdmin(identity: Identity): boolean {
 }
 
 /**
+ * Reports whether the user holds a role that writes.
+ *
+ * @param identity - The logged-in user.
+ * @returns Whether a role is named `Write` or `Admin`, with or without a
+ * prefix.
+ */
+export function canWrite(identity: Identity): boolean {
+  return identity.roles.some((role) => {
+    const level = role.split('.').pop();
+    return level === 'Write' || level === 'Admin';
+  });
+}
+
+/**
+ * Names the glyph a folder carries after its name.
+ *
+ * @param access - How the grants of the folder apply, unknown when omitted.
+ * @returns The lock, closed when the user may not write; nothing for a
+ * folder without grants.
+ */
+function lockOf(access: FolderAccess | undefined): string {
+  switch (access) {
+    case 'granted':
+      return ' 🔓';
+    case 'denied':
+      return ' 🔒';
+    default:
+      return '';
+  }
+}
+
+/**
  * Turns the folders into tree nodes, with the virtual roots first: the
  * unassigned media, and the bin for an administrator.
  *
  * @param folders - The folders from the backend.
  * @param admin - Whether the user may see the bin.
+ * @param access - How the grants of each folder apply, by folder id. The
+ * restricted folders carry a lock.
  * @returns The nodes, siblings sorted by name.
  */
-export function folderNodes(folders: Folder[], admin: boolean): TreeNode[] {
+export function folderNodes(
+  folders: Folder[],
+  admin: boolean,
+  access: Record<string, FolderAccess> = {},
+): TreeNode[] {
   const sorted = [...folders].sort((a, b) => a.name.localeCompare(b.name));
   return [
     { id: UNASSIGNED_ID, label: '[Unassigned media]' },
@@ -38,9 +81,39 @@ export function folderNodes(folders: Folder[], admin: boolean): TreeNode[] {
     ...sorted.map((folder) => ({
       id: folder.id,
       parentId: folder.parentId,
-      label: folder.name,
+      label: `${folder.name}${lockOf(access[folder.id])}`,
     })),
   ];
+}
+
+/** The width the marked title is cut to in the folder pane detail. */
+const MARK_WIDTH = 12;
+
+/** What the folder pane detail is computed from. */
+export interface FolderDetailState {
+  /** Whether the folders are loading. */
+  loadingFolders: boolean;
+  /** The media marked for a move; undefined when none is. */
+  mark: { title: string } | undefined;
+}
+
+/**
+ * Formats the detail of the folder pane. The mark is shown there because it
+ * is the pane that moves it, and the marked row is out of sight once the
+ * highlight leaves its folder.
+ *
+ * @param state - The explorer state.
+ * @returns `loading…`, the marked title after an arrow, or undefined when
+ * there is nothing to show.
+ */
+export function folderDetail(state: FolderDetailState): string | undefined {
+  if (state.loadingFolders) {
+    return 'loading…';
+  }
+  if (state.mark === undefined) {
+    return undefined;
+  }
+  return `→ ${fit(state.mark.title, MARK_WIDTH).trimEnd()}`;
 }
 
 /** What the media pane detail is computed from. */
@@ -110,11 +183,17 @@ export function sourceSummary(media: Media): string {
  *
  * @param media - The media.
  * @param width - The row width in cells.
- * @returns The title padded to the width, then the source summary.
+ * @param marked - Whether the media is marked for a move.
+ * @returns The title padded to the width, then the source summary and the
+ * flags.
  */
-export function mediaRow(media: Media, width: number): string {
+export function mediaRow(media: Media, width: number, marked = false): string {
   const summary = sourceSummary(media);
-  const flag = media.deleted ? ' [bin]' : expired(media) ? ' [expired]' : '';
+  const state = media.deleted ? '[bin]' : expired(media) ? '[expired]' : '';
+  const flag = [state, marked ? '[marked]' : '']
+    .filter((part) => part !== '')
+    .map((part) => ` ${part}`)
+    .join('');
   const room = Math.max(width - summary.length - flag.length - 2, 8);
   return `${fit(mediaTitle(media), room)}  ${summary}${flag}`;
 }

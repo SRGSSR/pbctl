@@ -1,4 +1,5 @@
-// The media flows: create and edit in the editor, unassign, delete, restore.
+// The media flows: create and edit in the editor, mark and move, unassign,
+// delete, restore.
 
 import type { EditorResult } from 'inkstand';
 import {
@@ -18,7 +19,7 @@ import {
   currentMedia,
 } from './action-context';
 import { mediaTemplate, parseDocument } from './forms';
-import { mediaTitle, UNASSIGNED_ID } from './model';
+import { mediaTitle, UNASSIGNED_ID, VIRTUAL_IDS } from './model';
 
 /** The comment above the document in the editor. */
 const HEADER =
@@ -189,4 +190,59 @@ export async function restore(context: ActionContext): Promise<void> {
   await restoreMedia(context.connection, media.id);
   context.state.reloadMedia();
   context.report(`✔ "${mediaTitle(media)}" restored.`, 'info');
+}
+
+/**
+ * Marks the highlighted media for a move, or clears the mark when it is
+ * already marked.
+ *
+ * @param context - What the action acts on.
+ * @returns Nothing.
+ */
+export function markMedia(context: ActionContext): void {
+  const media = currentMedia(context);
+  if (media === undefined) {
+    return;
+  }
+  const title = mediaTitle(media);
+  if (context.state.mark?.id === media.id) {
+    context.state.setMark(undefined);
+    context.report(`Unmarked "${title}".`, 'info');
+    return;
+  }
+  const folder = context.state.folder?.id;
+  context.state.setMark({
+    id: media.id,
+    title,
+    folderId:
+      folder === undefined || VIRTUAL_IDS.includes(folder) ? undefined : folder,
+  });
+  context.report(`Marked "${title}". P moves it into a folder.`, 'info');
+}
+
+/**
+ * Moves the marked media into the highlighted folder. The backend keys an
+ * assignment on the media, so the move replaces the previous folder.
+ *
+ * @param context - What the action acts on.
+ * @returns Nothing.
+ */
+export async function moveMarked(context: ActionContext): Promise<void> {
+  const { mark } = context.state;
+  if (mark === undefined) {
+    context.report('Mark a media with v first.', 'info');
+    return;
+  }
+  const folder = currentFolder(context);
+  if (folder === undefined) {
+    return;
+  }
+  if (mark.folderId === folder.id) {
+    context.report(`"${mark.title}" is already in ${folder.name}.`, 'info');
+    return;
+  }
+  await assignMedia(context.connection, folder.id, mark.id);
+  context.state.setMark(undefined);
+  context.state.reload();
+  context.report(`✔ "${mark.title}" moved to ${folder.name}.`, 'info');
 }

@@ -18,13 +18,18 @@ export interface ProfileAddWizardProps {
   /** Called when the user cancels with escape. */
   onCancel: () => void;
   /** Looks up the identity provider of a backend to pre-fill the defaults. */
-  detect: (backend: string) => Promise<IdentityProviderHint | undefined>;
+  detect: (
+    backend: string,
+    tlsVerify: boolean,
+  ) => Promise<IdentityProviderHint | undefined>;
 }
 
 /** The wizard state: the machine, plus what the detection is doing. */
 interface WizardState {
   /** The current machine state. */
   machine: ProfileAddMachine;
+  /** The backend answered, which the detection needs a step later. */
+  backend?: string;
   /** Whether the detection is running. */
   detecting: boolean;
   /** What the detection found, shown under the title. */
@@ -70,8 +75,8 @@ export function ProfileAddWizard(props: ProfileAddWizardProps): ReactElement {
 }
 
 /**
- * Owns the wizard state and applies answers, running the detection after
- * the backend step.
+ * Owns the wizard state and applies answers, running the detection after the
+ * TLS step: the detection talks to the backend, so it needs that answer.
  *
  * @param props - The wizard props.
  * @returns The state and the answer handler.
@@ -86,13 +91,15 @@ function useWizard(props: ProfileAddWizardProps): {
   });
   const answer = (value: string | boolean): void => {
     const next = state.machine.answer(value);
+    const backend =
+      state.machine.step === 'backend' ? String(value) : state.backend;
     if (next.result !== undefined) {
       props.onSubmit(next.result);
-    } else if (state.machine.step === 'backend') {
-      setState({ machine: next, detecting: true });
-      void detectInto(props.detect, String(value), next, setState);
+    } else if (state.machine.step === 'tls' && backend !== undefined) {
+      setState({ machine: next, backend, detecting: true });
+      void detectInto(props.detect, backend, value === true, next, setState);
     } else {
-      setState({ ...state, machine: next });
+      setState({ ...state, machine: next, backend });
     }
   };
   return { state, answer };
@@ -102,7 +109,8 @@ function useWizard(props: ProfileAddWizardProps): {
  * Runs the detection and feeds what it found into the machine as fallbacks.
  *
  * @param detect - The detection function.
- * @param backend - The backend URL just answered.
+ * @param backend - The backend URL answered two steps back.
+ * @param tlsVerify - The TLS answer the detection request follows.
  * @param machine - The machine state at the issuer step.
  * @param setState - Updates the wizard state.
  * @returns Nothing.
@@ -110,13 +118,15 @@ function useWizard(props: ProfileAddWizardProps): {
 async function detectInto(
   detect: ProfileAddWizardProps['detect'],
   backend: string,
+  tlsVerify: boolean,
   machine: ProfileAddMachine,
   setState: (state: WizardState) => void,
 ): Promise<void> {
-  const hint = await detect(backend);
+  const hint = await detect(backend, tlsVerify);
   if (hint === undefined) {
     setState({
       machine,
+      backend,
       detecting: false,
       detected: 'No identity provider detected; the defaults are guesses.',
     });
@@ -124,6 +134,7 @@ async function detectInto(
   }
   setState({
     machine: machine.withAnswers(hint),
+    backend,
     detecting: false,
     detected: `Detected ${hint.issuer} (client ${hint.clientId}).`,
   });

@@ -9,6 +9,7 @@ import {
   type Open,
   Pane,
   StatusBar,
+  type StatusSegment,
   TreeView,
   treeAction,
 } from 'inkstand';
@@ -23,7 +24,7 @@ import {
   runAction,
 } from './actions';
 import { MediaList } from './media-list';
-import { inspectorLines, mediaDetail, mediaRow } from './model';
+import { folderDetail, inspectorLines, mediaDetail, mediaRow } from './model';
 import { type ExplorerState, type Report, useExplorer } from './use-explorer';
 
 /** The explorer contract. */
@@ -44,8 +45,6 @@ export interface ExplorerProps {
   edit: (request: EditTextRequest) => Promise<EditorResult>;
   /** Reports a message to the shell. */
   report: Report;
-  /** Opens the profile screen. */
-  onProfiles: () => void;
   /** Quits the application. */
   onQuit: () => void;
 }
@@ -101,14 +100,29 @@ export function Explorer(props: ExplorerProps): ReactElement {
       <Bottom frame={frame} />
       <StatusBar
         right={<Box height={1}>{props.notice}</Box>}
-        segments={[
-          { text: props.connection.profile.name, color: 'cyan' },
-          { text: props.connection.identity.name, color: 'green' },
-          { text: props.connection.profile.backend, dim: true },
-        ]}
+        segments={segments(props.connection)}
       />
     </Box>
   );
+}
+
+/**
+ * Builds the status bar segments: the profile, who is logged in, the backend,
+ * and a warning when the profile skips certificate verification.
+ *
+ * @param connection - The live connection.
+ * @returns The segments.
+ */
+function segments(connection: Connection): StatusSegment[] {
+  const bar: StatusSegment[] = [
+    { text: connection.profile.name, color: 'cyan' },
+    { text: connection.identity.name, color: 'green' },
+    { text: connection.profile.backend, dim: true },
+  ];
+  if (!connection.profile.tlsVerify) {
+    bar.push({ text: 'TLS off', color: 'yellow' });
+  }
+  return bar;
 }
 
 /**
@@ -263,7 +277,7 @@ function FoldersPane(props: { frame: Frame }): ReactElement {
   const { state, focused, listRows } = props.frame;
   return (
     <Pane
-      detail={state.loadingFolders ? 'loading…' : undefined}
+      detail={folderDetail(state)}
       focusColor="cyan"
       focused={focused === 'tree'}
       title="Folders"
@@ -313,7 +327,7 @@ function MediaPane(props: { frame: Frame }): ReactElement {
         onOpen={() => edit !== undefined && run(edit)}
         rows={state.media.map((item) => ({
           id: item.id,
-          label: mediaRow(item, listWidth),
+          label: mediaRow(item, listWidth, state.mark?.id === item.id),
         }))}
       />
     </Pane>

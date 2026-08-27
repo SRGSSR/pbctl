@@ -42,8 +42,9 @@ export {
   refreshTokens,
   requestDeviceCode,
 } from './connection/oidc';
-export type { Folder } from './queries/folders';
-export { listFolders } from './queries/folders';
+export { setTlsVerification } from './connection/tls';
+export type { Folder, FolderAccess } from './queries/folders';
+export { folderAccess, listFolders } from './queries/folders';
 export type {
   Media,
   MediaMetadata,

@@ -1,7 +1,7 @@
 {
   "name": "@srgssr/pbctl",
   "version": "0.1.0",
-  "description": "An interactive terminal client for the pillarbox-demo-backend REST API",
+  "description": "A TUI client for the pillarbox-demo-backend REST API",
   "license": "MIT",
   "author": "SRG SSR",
   "homepage": "https://github.com/srgssr/pbctl#readme",

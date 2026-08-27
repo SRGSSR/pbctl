@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { Connection } from '../connection/connection';
 import type { FetchLike } from '../connection/detect';
-import { type Folder, listFolders } from './folders';
+import { type Folder, folderAccess, listFolders } from './folders';
 
 const connection: Connection = {
   profile: {
@@ -58,4 +58,32 @@ test('listFolders returns an empty list for an empty backend', async () => {
   const fetchFn: FetchLike = () =>
     Promise.resolve(new Response('[]', { status: 200 }));
   expect(await listFolders(connection, fetchFn)).toEqual([]);
+});
+
+test('folderAccess reads the grants of the folder chain', async () => {
+  const urls: string[] = [];
+  const answer =
+    (body: string, status: number): FetchLike =>
+    (url) => {
+      urls.push(url);
+      return Promise.resolve(new Response(body, { status }));
+    };
+  expect(await folderAccess(connection, 'f1', answer('[]', 200))).toBe('open');
+  expect(urls).toEqual(['http://localhost:8080/v1/folder/f1/permission']);
+  const grants = '[{"id":"g1","folderId":"f1","canWrite":true}]';
+  expect(await folderAccess(connection, 'f1', answer(grants, 200))).toBe(
+    'granted',
+  );
+});
+
+test('folderAccess reads a refusal as a folder the user may not write', async () => {
+  const forbidden: FetchLike = () =>
+    Promise.resolve(new Response(null, { status: 403 }));
+  expect(await folderAccess(connection, 'f1', forbidden)).toBe('denied');
+});
+
+test('folderAccess rethrows any other failure', async () => {
+  const missing: FetchLike = () =>
+    Promise.resolve(new Response(null, { status: 404 }));
+  expect(folderAccess(connection, 'f1', missing)).rejects.toThrow('HTTP 404');
 });

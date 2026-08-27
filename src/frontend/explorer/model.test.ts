@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test';
 import type { Media } from '../../engine/engine';
 import {
   BIN_ID,
+  canWrite,
+  folderDetail,
   folderNodes,
   inspectorLines,
   isAdmin,
@@ -125,4 +127,48 @@ test('mediaDetail shows the backend count of a folder, else the rows fetched', (
   expect(
     mediaDetail({ ...base, folder: { id: 'a' }, loadingMedia: true }),
   ).toBe('loading…');
+});
+
+test('folderNodes locks a folder with grants', () => {
+  const stamp = { createdAt: '', updatedAt: '', mediaCount: 0 };
+  const folders = [
+    { id: 'a', name: 'Alpha', ...stamp },
+    { id: 'b', name: 'Beta', ...stamp },
+    { id: 'c', name: 'Gamma', ...stamp },
+  ];
+  const nodes = folderNodes(folders, false, { a: 'denied', b: 'granted' });
+  expect(nodes.map((node) => node.label)).toEqual([
+    '[Unassigned media]',
+    'Alpha \u{1F512}',
+    'Beta \u{1F513}',
+    'Gamma',
+  ]);
+});
+
+test('canWrite reads the Write and Admin roles', () => {
+  const identity = { subject: '1', name: 'Ada', roles: ['PillarboxDemo.Read'] };
+  expect(canWrite(identity)).toBe(false);
+  expect(canWrite({ ...identity, roles: [] })).toBe(false);
+  expect(canWrite({ ...identity, roles: ['PillarboxDemo.Write'] })).toBe(true);
+  expect(canWrite({ ...identity, roles: ['Admin'] })).toBe(true);
+});
+
+test('mediaRow flags a marked media next to its state', () => {
+  expect(mediaRow(media, 40, true)).toContain('[marked]');
+  expect(mediaRow({ ...media, deleted: true }, 44, true)).toContain(
+    '[bin] [marked]',
+  );
+  expect(mediaRow(media, 40, false)).not.toContain('[marked]');
+});
+
+test('folderDetail shows the loading flag, then the marked title', () => {
+  const mark = { title: 'The pilot' };
+  expect(folderDetail({ loadingFolders: true, mark })).toBe('loading…');
+  expect(folderDetail({ loadingFolders: false, mark: undefined })).toBe(
+    undefined,
+  );
+  expect(folderDetail({ loadingFolders: false, mark })).toBe('→ The pilot');
+  expect(
+    folderDetail({ loadingFolders: false, mark: { title: 'A longer title' } }),
+  ).toBe('→ A longer ti…');
 });

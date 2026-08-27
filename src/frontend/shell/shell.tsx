@@ -1,13 +1,6 @@
 // The shell: the terminal size, the login frame, then the explorer.
 
-import {
-  Box,
-  type SuspendTerminal,
-  Text,
-  useApp,
-  useInput,
-  useWindowSize,
-} from 'ink';
+import { Box, type SuspendTerminal, useApp, useWindowSize } from 'ink';
 import {
   type EditorResult,
   type EditTextRequest,
@@ -23,8 +16,9 @@ import {
   type Connection,
   detectIdentityProvider,
   failureMessage,
+  type IdentityProviderHint,
   type Profile,
-  ProfileStore,
+  setTlsVerification,
 } from '../../engine/engine';
 import { Header } from '../components/header';
 import { Explorer } from '../explorer/explorer';
@@ -60,8 +54,6 @@ interface ShellState {
   connection?: Connection;
   /** The pushed messages. */
   notices: Notice[];
-  /** Opens the profile screen. */
-  profiles: () => void;
   /** Reports a message from the explorer. */
   report: (message: string, tone: 'error' | 'info') => void;
   /** Quits the application. */
@@ -84,7 +76,6 @@ export function Shell(): ReactElement {
       connection={shell.connection}
       edit={shell.edit}
       notice={shell.notices[shell.notices.length - 1]?.node}
-      onProfiles={shell.profiles}
       open={shell.open}
       onQuit={shell.exit}
       report={shell.report}
@@ -156,25 +147,22 @@ function useBase(): Base {
 }
 
 /**
- * Runs the flows over the primitives: the profile screen, the login frame,
- * and the reporter.
+ * Runs the flows over the primitives: the login frame and the reporter.
  *
  * @param base - The primitives.
- * @returns The profile screen opener and the reporter.
+ * @returns The reporter.
  */
-function useFlows(base: Base): Pick<ShellState, 'profiles' | 'report'> {
+function useFlows(base: Base): Pick<ShellState, 'report'> {
   const context: ShellContext = {
     push: base.push,
     open: base.open,
     exit: base.exit,
     session: { connection: base.connection, setConnection: base.setConnection },
   };
-  const profiles = useProfiles(context);
-  const idle = base.connection === undefined && base.screen === undefined;
-  useLoginFrame(context, profiles, idle);
+  useLoginFrame(context);
   const report = (message: string, tone: 'error' | 'info'): void =>
     pushLine(context, message, tone === 'error' ? 'red' : 'dim');
-  return { profiles, report };
+  return { report };
 }
 
 /**
@@ -217,70 +205,61 @@ function useNotices(): {
 }
 
 /**
- * Builds the function that opens the profile screen and logs in to the
- * picked profile.
+ * Starts the login frame at startup. A session stays on the profile it picks
+ * there; another profile means another run.
  *
  * @param context - What the flow acts on; the latest one is used.
- * @returns The function.
+ * @returns Nothing.
  */
-function useProfiles(context: ShellContext): () => void {
+function useLoginFrame(context: ShellContext): void {
   const latest = useRef(context);
   latest.current = context;
-  return useCallback(() => {
-    void latest.current
-      .open<Profile>((done, cancel) => (
-        <ProfilesScreen
-          detect={detectIdentityProvider}
-          onCancel={cancel}
-          onLogin={done}
-        />
-      ))
-      .then((profile) => {
-        if (profile !== undefined) {
-          return login(profile, latest.current);
-        }
-      })
-      .catch((error: unknown) => fail(latest.current, error));
+  useEffect(() => {
+    void runLoginFrame(() => latest.current);
   }, []);
 }
 
 /**
- * Runs the login frame: logs in to the default profile once at startup, or
- * opens the profile screen; then reads its keys, `p` for the profile screen
- * and `q` to quit. Ink quits on ctrl+c.
+ * Opens the profile screen until a login succeeds or the user quits. The
+ * screen is the only surface of the login frame: a failed login reopens it,
+ * and quitting from it quits pbctl.
  *
- * @param context - What the flows act on; the latest one is used.
- * @param profiles - Opens the profile screen.
- * @param active - Whether the keys apply.
+ * @param context - Reads the current flow context.
  * @returns Nothing.
  */
-function useLoginFrame(
-  context: ShellContext,
-  profiles: () => void,
-  active: boolean,
-): void {
-  const latest = useRef({ context, profiles });
-  latest.current = { context, profiles };
-  useEffect(() => {
-    const profile = new ProfileStore().defaultProfile();
+async function runLoginFrame(context: () => ShellContext): Promise<void> {
+  for (;;) {
+    const profile = await context().open<Profile>((done, cancel) => (
+      <ProfilesScreen detect={detectProvider} onLogin={done} onQuit={cancel} />
+    ));
     if (profile === undefined) {
-      latest.current.profiles();
+      context().exit();
       return;
     }
-    login(profile, latest.current.context).catch((error: unknown) =>
-      fail(latest.current.context, error),
-    );
-  }, []);
-  useInput(
-    (input) => {
-      if (input === 'p') {
-        latest.current.profiles();
-      } else if (input === 'q') {
-        latest.current.context.exit();
+    try {
+      if (await login(profile, context())) {
+        return;
       }
-    },
-    { isActive: active },
-  );
+    } catch (error) {
+      fail(context(), error);
+    }
+  }
+}
+
+/**
+ * Looks up the identity provider of a backend under the TLS setting the
+ * wizard just collected, so a backend with a self-signed certificate answers.
+ *
+ * @param backend - The backend URL.
+ * @param tlsVerify - Whether certificates are verified.
+ * @returns The hint, or undefined when the backend gives no usable redirect.
+ */
+function detectProvider(
+  backend: string,
+  tlsVerify: boolean,
+): Promise<IdentityProviderHint | undefined> {
+  setTlsVerification(tlsVerify);
+  return detectIdentityProvider(backend);
 }
 
 /**
@@ -316,7 +295,7 @@ function LoginFrame(props: { shell: ShellState }): ReactElement {
         {shell.notices.map((notice) => (
           <Box key={notice.id}>{notice.node}</Box>
         ))}
-        {shell.screen ?? <Text dimColor>p opens the profiles, q quits.</Text>}
+        {shell.screen}
       </Box>
       <StatusBar
         segments={[

@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
 import { ProfileAddMachine, toProfile } from './profile-add-machine';
 
-test('the wizard walks name, backend, issuer, client id, scopes, tls', () => {
+test('the wizard walks name, backend, tls, issuer, client id, scopes', () => {
   let machine = ProfileAddMachine.start();
   const steps: string[] = [];
-  for (const value of ['local', 'http://b', 'http://i', 'cid', 'openid']) {
+  for (const value of ['local', 'http://b', false, 'http://i', 'cid']) {
     steps.push(machine.step);
     machine = machine.answer(value);
   }
@@ -12,14 +12,13 @@ test('the wizard walks name, backend, issuer, client id, scopes, tls', () => {
   expect(steps).toEqual([
     'name',
     'backend',
+    'tls',
     'issuer',
     'clientId',
     'scopes',
-    'tls',
   ]);
-  expect(machine.question.kind).toBe('select');
   expect(machine.result).toBe(undefined);
-  const done = machine.answer(false);
+  const done = machine.answer('openid');
   expect(done.result).toEqual({
     name: 'local',
     backend: 'http://b',
@@ -28,6 +27,12 @@ test('the wizard walks name, backend, issuer, client id, scopes, tls', () => {
     scopes: 'openid',
     tlsVerify: false,
   });
+});
+
+test('the TLS question is a select, asked before the identity provider', () => {
+  const machine = ProfileAddMachine.start().answer('local').answer('http://b');
+  expect(machine.step).toBe('tls');
+  expect(machine.question.kind).toBe('select');
 });
 
 test('text questions carry their default as fallback', () => {
@@ -40,6 +45,7 @@ test('withAnswers turns detected values into fallbacks without moving', () => {
   const machine = ProfileAddMachine.start()
     .answer('local')
     .answer('http://b')
+    .answer(true)
     .withAnswers({ issuer: 'http://detected', clientId: 'detected-client' });
   expect(machine.step).toBe('issuer');
   expect(machine.question.fallback).toBe('http://detected');
