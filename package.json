@@ -1,6 +1,6 @@
 {
   "name": "@srgssr/pbctl",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A TUI client for the pillarbox-demo-backend REST API",
   "license": "MIT",
   "author": "SRG SSR",
