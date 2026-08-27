@@ -1,5 +1,6 @@
 // The login flow: device code, browser, polling, then the backend probe.
 
+import { copyToClipboard } from 'inkstand';
 import {
   type Connection,
   createConnection,
@@ -127,6 +128,7 @@ function completeLogin(
 ): Promise<LoginOutcome | undefined> {
   const url =
     pending.auth.verificationUriComplete ?? pending.auth.verificationUri;
+  copyToClipboard(pending.auth.userCode);
   const opened = openBrowser(url);
   pushLine(context, `Open ${url} and enter the code ${pending.auth.userCode}.`);
   return context.open<LoginOutcome>((done, cancel) => (

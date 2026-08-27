@@ -55,6 +55,7 @@ export function DeviceLoginScreen(props: DeviceLoginProps): ReactElement {
       </Text>
       <Text>
         Code <Text bold>{props.auth.userCode}</Text>
+        <Text dimColor> (copied to the clipboard)</Text>
       </Text>
       {!props.opened && (
         <Text color="yellow">
