@@ -5,7 +5,7 @@ Thanks for contributing. Participation is governed by the
 
 ## Setup
 
-Requirements: Bun 1.3 or later (the pinned version is in `.tool-versions`). Bun runs the
+Requirements: Bun 1.4 or later (the pinned version is in `.tool-versions`). Bun runs the
 TypeScript source directly, so there is no build step while developing. `bun run dev` starts the
 app from source, and `bun run format` applies Biome's formatting.
 
