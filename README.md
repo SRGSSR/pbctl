@@ -43,6 +43,10 @@ Then start with:
 ```bash
 pbctl
 ```
+
+On first start, create a profile pointing at your backend and identity provider. See the
+[authentication guide](docs/authentication.md) for troubleshooting this step.
+
 ## Contributing
 
 See the [contributing guide](docs/CONTRIBUTING.md). Participation is governed by the
