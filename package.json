@@ -64,7 +64,7 @@
     "typescript": "^6"
   },
   "dependencies": {
-    "ink": "^7.1.1",
+    "ink": "^8.0.0",
     "inkstand": "^1.0.1",
     "react": "^19.2.8"
   }
